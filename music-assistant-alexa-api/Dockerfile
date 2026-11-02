@@ -4,7 +4,10 @@
 # the skill code and the assets. This layer adds the add-on runtime glue.
 # The tag+digest here and in build.yaml must stay identical — see AGENTS.md.
 ARG BUILD_FROM=ghcr.io/timlaing/music-assistant-skill:v1.6.10@sha256:39cf27f294051f9369bb920f7f157da679fdd85d02d1bfedd411df8316ab3794
-FROM $BUILD_FROM
+# Supervisor rejects digest-pinned build_from in build.yaml and then passes
+# BUILD_FROM=ghcr.io/home-assistant/base:latest, so a local build must not
+# use the build arg. Keep this reference identical to ARG BUILD_FROM above.
+FROM ghcr.io/timlaing/music-assistant-skill:v1.6.10@sha256:39cf27f294051f9369bb920f7f157da679fdd85d02d1bfedd411df8316ab3794
 
 # Serve with gunicorn instead of the skill image's Flask dev server, using the
 # Home Assistant ingress log format from gunicorn.conf.py.
