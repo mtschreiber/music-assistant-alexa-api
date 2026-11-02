@@ -35,6 +35,13 @@ configuration:
     name: Enable Apl (migration only)
     description: Legacy upgrade import only. Edit this setting in Web UI → Setup.
       After initial migration, changing this legacy field has no effect.
+  account_routing:
+    name: Spotify account routing (JSON)
+    description: >-
+      Which Spotify account each Echo plays from, as JSON:
+      {"players": {"<MA player id>": ["spotify--<instance>", ...]}, "default": [...]}.
+      The first account not already playing on another Echo is used.
+      Leave empty to let Music Assistant choose.
   lwa_client_id:
     name: Lwa Client Id (migration only)
     description: Legacy upgrade import only. Edit this setting in Web UI → Setup.

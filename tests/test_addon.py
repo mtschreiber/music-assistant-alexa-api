@@ -58,6 +58,7 @@ def test_personal_deployment_option_and_logging_contract():
         "lwa_client_secret",
         "locale",
         "skip_url_validation",
+        "account_routing",
     }
     assert config["ingress"]
     assert config.get("ingress_port", 8099) == 8099

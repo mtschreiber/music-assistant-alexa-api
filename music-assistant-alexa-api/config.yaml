@@ -1,9 +1,9 @@
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config
-name: Music Assistant Alexa API add-on
-version: "1.3.10"
+name: Music Assistant Alexa API (multi-account)
+version: "1.3.10-mt.1"
 slug: ma_alexa_api
-description: Music Assistant Alexa API add-on
-url: "https://github.com/timlaing/music-assistant-alexa-api/tree/main/music-assistant-alexa-api"
+description: Music Assistant Alexa API add-on with per-Echo Spotify account routing
+url: "https://github.com/mtschreiber/music-assistant-alexa-api/tree/main/music-assistant-alexa-api"
 arch:
   - aarch64
   - amd64
@@ -18,6 +18,7 @@ options:
   skip_url_validation: false
   ma_api_url: ""
   enable_apl: false
+  account_routing: ""
 schema:
   ma_hostname: "str"
   skill_hostname: "str?"
@@ -31,12 +32,12 @@ schema:
   lwa_client_id: "str?"
   lwa_client_secret: "password?"
   skill_certificate_type: "list(Trusted|Wildcard|SelfSigned)?"
-image: "ghcr.io/timlaing/{arch}-addon-ma-alexa-api"
+  account_routing: "str?"
 ingress: true
 ingress_entry: status
 panel_icon: mdi:music
 homeassistant: 2025.12.5
 ports:
-  5000/tcp: 5000
+  5000/tcp: 5001
 ports_description:
   5000/tcp: "The API port"
