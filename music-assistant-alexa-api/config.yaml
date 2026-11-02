@@ -1,6 +1,6 @@
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config
 name: Music Assistant Alexa API (multi-account)
-version: "1.3.10-mt.1"
+version: "1.3.10-mt.2"
 slug: ma_alexa_api
 description: Music Assistant Alexa API add-on with per-Echo Spotify account routing
 url: "https://github.com/mtschreiber/music-assistant-alexa-api/tree/main/music-assistant-alexa-api"

@@ -22,11 +22,13 @@ Configuration comes from the add-on option ``account_routing``, a JSON string:
 
 For a player the first instance that is not already streaming on another
 player is used. When every listed instance is busy the first one is used, which
-stops the other player, the same as Spotify itself would. URIs from any other
-source (library://, radio, local files) are never changed. With no
+stops the other player, the same as Spotify itself would. Library URIs
+(library://track/2) are first resolved to the item's Spotify mapping; URIs
+from any other source (radio, local files) are never changed. With no
 configuration every URI passes through unchanged.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -103,6 +105,28 @@ def _as_dict(item):
     return to_dict() if callable(to_dict) else {}
 
 
+def _streaming_instance(current):
+    """The Spotify account a queue item is streaming from, if any."""
+    details = current.get("streamdetails") or {}
+    provider = str(details.get("provider") or "")
+    if provider.startswith("spotify--"):
+        return provider
+    media = current.get("media_item") or {}
+    found = instance_of(str(media.get("uri") or "")) or instance_of(
+        str(current.get("uri") or "")
+    )
+    if found:
+        return found
+    # Library items carry every account in provider_mappings; only trust a
+    # single Spotify mapping, never guess between several.
+    spotify = {
+        str(m.get("provider_instance"))
+        for m in media.get("provider_mappings") or []
+        if str(m.get("provider_instance", "")).startswith("spotify--")
+    }
+    return spotify.pop() if len(spotify) == 1 else None
+
+
 def busy_from_queues(queues, player_id):
     """Spotify instances currently streaming on any player other than this one."""
     busy = set()
@@ -112,8 +136,9 @@ def busy_from_queues(queues, player_id):
             continue
         if str(queue.get("state", "")).lower() != "playing":
             continue
-        current = queue.get("current_item") or {}
-        busy.update(_INSTANCE.findall(json.dumps(current, default=str)))
+        instance = _streaming_instance(queue.get("current_item") or {})
+        if instance:
+            busy.add(instance)
     return busy
 
 
@@ -132,14 +157,47 @@ async def busy_instances(client, player_id):
     return busy_from_queues(queues, player_id)
 
 
+_LIBRARY = re.compile(r"library://([a-z_]+)/(.+)$")
+
+
+def spotify_uri_for(item, media_type):
+    """A spotify--<instance>://<type>/<id> URI from a library item's mappings."""
+    for mapping in _as_dict(item).get("provider_mappings") or []:
+        mapping = _as_dict(mapping)
+        instance = str(mapping.get("provider_instance") or "")
+        if instance.startswith("spotify--") and mapping.get("item_id"):
+            if mapping.get("available", True) is False:
+                continue
+            return f"{instance}://{media_type}/{mapping['item_id']}"
+    return None
+
+
+async def resolve_library(client, uri):
+    """Turn a library:// URI into a Spotify URI; leave it alone when impossible."""
+    match = _LIBRARY.match(uri) if isinstance(uri, str) else None
+    if not match:
+        return uri
+    try:
+        item = await client.send_command("music/item_by_uri", uri=uri)
+    except Exception as exc:
+        logger.warning("Could not look up %s for account routing: %s", uri, exc)
+        return uri
+    return spotify_uri_for(item, match.group(1)) or uri
+
+
 async def route(client, player_id, media):
     """Return media (a URI or list of URIs) rewritten to the player's account."""
     config = load_config()
     if not config:
         return media
     order = instances_for(config, player_id)
+    if not order:
+        return media
     uris = media if isinstance(media, list) else [media]
-    if not order or not any(instance_of(uri) for uri in uris):
+    if any(_LIBRARY.match(uri) for uri in uris if isinstance(uri, str)):
+        uris = list(await asyncio.gather(*(resolve_library(client, u) for u in uris)))
+    if not any(instance_of(uri) for uri in uris):
+        logger.info("Account routing: %s has no Spotify media to route", player_id)
         return media
     busy = await busy_instances(client, player_id)
     chosen = choose_instance(order, busy)
@@ -148,6 +206,5 @@ async def route(client, player_id, media):
             "Every Spotify account for %s is busy; using %s anyway", player_id, chosen
         )
     logger.info("Account routing: %s -> %s (busy: %s)", player_id, chosen, sorted(busy))
-    if isinstance(media, list):
-        return [rewrite_uri(uri, chosen) for uri in media]
-    return rewrite_uri(media, chosen)
+    routed = [rewrite_uri(uri, chosen) for uri in uris]
+    return routed if isinstance(media, list) else routed[0]

@@ -20,14 +20,17 @@ CONFIG = {"players": {"Kitchen": [A, B, C], "Olive": [B, A, C]}, "default": [A, 
 
 
 class FakeClient:
-    def __init__(self, queues=None, fail=False):
+    def __init__(self, queues=None, fail=False, items=None):
         self.queues = queues or []
         self.fail = fail
+        self.items = items or {}
 
-    async def send_command(self, command):
-        assert command == "player_queues/all"
+    async def send_command(self, command, **kwargs):
         if self.fail:
             raise RuntimeError("boom")
+        if command == "music/item_by_uri":
+            return self.items[kwargs["uri"]]
+        assert command == "player_queues/all"
         return self.queues
 
 
@@ -108,3 +111,48 @@ def test_reads_addon_options(monkeypatch, tmp_path):
 def test_invalid_json_disables_routing(monkeypatch):
     monkeypatch.setenv("ACCOUNT_ROUTING", "{not json")
     assert ar.load_config() == {}
+
+
+def library_track(*instances):
+    return {
+        "uri": "library://track/2",
+        "provider_mappings": [
+            {"provider_instance": i, "item_id": "SPOTIFYID", "available": True}
+            for i in instances
+        ]
+        + [{"provider_instance": "library", "item_id": "2"}],
+    }
+
+
+def test_library_uri_resolves_to_routed_spotify(routing):
+    client = FakeClient(
+        [playing("Vivian", B + "://track/x")],
+        items={"library://track/2": library_track(C, A, B)},
+    )
+    assert run(ar.route(client, "Olive", "library://track/2")) == A + "://track/SPOTIFYID"
+
+
+def test_library_uri_without_spotify_is_left_alone(routing):
+    client = FakeClient(items={"library://track/9": {"provider_mappings": []}})
+    assert run(ar.route(client, "Olive", "library://track/9")) == "library://track/9"
+
+
+def test_busy_uses_streamdetails_provider():
+    queue = {
+        "queue_id": "Hot tub",
+        "state": "playing",
+        "current_item": {
+            "media_item": library_track(A, B, C),
+            "streamdetails": {"provider": C},
+        },
+    }
+    assert ar.busy_from_queues([queue], "Kitchen") == {C}
+
+
+def test_busy_never_guesses_between_library_mappings():
+    queue = {
+        "queue_id": "Hot tub",
+        "state": "playing",
+        "current_item": {"media_item": library_track(A, B, C)},
+    }
+    assert ar.busy_from_queues([queue], "Kitchen") == set()
